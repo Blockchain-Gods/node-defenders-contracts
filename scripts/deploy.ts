@@ -28,7 +28,19 @@ async function main() {
   const connection = await hre.network.connect();
   ethers = connection.ethers;
 
-  const [deployer] = await ethers.getSigners();
+  // For Fuji/mainnet — use private key from env
+  // For localhost — falls back to default hardhat accounts
+  let deployer;
+  if (process.env.DEPLOYER_PRIVATE_KEY) {
+    const wallet = new ethers.Wallet(
+      process.env.DEPLOYER_PRIVATE_KEY,
+      ethers.provider,
+    );
+    deployer = wallet;
+  } else {
+    [deployer] = await ethers.getSigners();
+  }
+
   const network = await ethers.provider.getNetwork();
   const networkName = network.name === "unknown" ? "localhost" : network.name;
 
@@ -49,7 +61,7 @@ async function main() {
   // 1. SoulToken
   // -------------------------------------------------------------------------
   console.log("1/7  Deploying SoulToken...");
-  const SoulToken = await ethers.getContractFactory("SoulToken");
+  const SoulToken = await ethers.getContractFactory("SoulToken", deployer);
   const soulToken = await SoulToken.deploy(signingServiceAddress);
   await soulToken.waitForDeployment();
   const soulAddress = await soulToken.getAddress();
@@ -59,7 +71,7 @@ async function main() {
   // 2. GodsToken
   // -------------------------------------------------------------------------
   console.log("2/7  Deploying GodsToken...");
-  const GodsToken = await ethers.getContractFactory("GodsToken");
+  const GodsToken = await ethers.getContractFactory("GodsToken", deployer);
   const godsToken = await GodsToken.deploy(signingServiceAddress);
   await godsToken.waitForDeployment();
   const godsAddress = await godsToken.getAddress();
@@ -69,7 +81,7 @@ async function main() {
   // 3. Treasury
   // -------------------------------------------------------------------------
   console.log("3/7  Deploying Treasury...");
-  const Treasury = await ethers.getContractFactory("Treasury");
+  const Treasury = await ethers.getContractFactory("Treasury", deployer);
   const treasury = await Treasury.deploy(
     soulAddress,
     godsAddress,
@@ -83,7 +95,10 @@ async function main() {
   // 4. PlayerRegistry
   // -------------------------------------------------------------------------
   console.log("4/7  Deploying PlayerRegistry...");
-  const PlayerRegistry = await ethers.getContractFactory("PlayerRegistry");
+  const PlayerRegistry = await ethers.getContractFactory(
+    "PlayerRegistry",
+    deployer,
+  );
   const playerRegistry = await PlayerRegistry.deploy(signingServiceAddress);
   await playerRegistry.waitForDeployment();
   const registryAddress = await playerRegistry.getAddress();
@@ -93,7 +108,7 @@ async function main() {
   // 5. SBT
   // -------------------------------------------------------------------------
   console.log("5/7  Deploying SBT...");
-  const SBT = await ethers.getContractFactory("SBT");
+  const SBT = await ethers.getContractFactory("SBT", deployer);
   const sbt = await SBT.deploy(signingServiceAddress, registryAddress);
   await sbt.waitForDeployment();
   const sbtAddress = await sbt.getAddress();
@@ -103,7 +118,7 @@ async function main() {
   // 6. UpgradeNFT
   // -------------------------------------------------------------------------
   console.log("6/7  Deploying UpgradeNFT...");
-  const UpgradeNFT = await ethers.getContractFactory("UpgradeNFT");
+  const UpgradeNFT = await ethers.getContractFactory("UpgradeNFT", deployer);
   const upgradeNFT = await UpgradeNFT.deploy(
     signingServiceAddress,
     registryAddress,
@@ -116,7 +131,7 @@ async function main() {
   // 7. Marketplace
   // -------------------------------------------------------------------------
   console.log("7/7  Deploying Marketplace...");
-  const Marketplace = await ethers.getContractFactory("Marketplace");
+  const Marketplace = await ethers.getContractFactory("Marketplace", deployer);
   const marketplace = await Marketplace.deploy(
     soulAddress,
     godsAddress,
