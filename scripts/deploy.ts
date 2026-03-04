@@ -171,6 +171,11 @@ async function main() {
   ).wait();
   console.log("  ✓ Done\n");
 
+  console.log("  UpgradeNFT → granting MINTER_ROLE to Marketplace...");
+  const MINTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("MINTER_ROLE"));
+  await (await upgradeNFT.grantRole(MINTER_ROLE, marketplaceAddress)).wait();
+  console.log("  ✓ Done\n");
+
   // -------------------------------------------------------------------------
   // Seed initial rental tiers
   // -------------------------------------------------------------------------
@@ -203,6 +208,99 @@ async function main() {
     await marketplace.registerRentalTier("30 Days", thirtyDays, tier3Price, 0n)
   ).wait();
   console.log("  ✓ Tiers seeded\n");
+
+  // -------------------------------------------------------------------------
+  // Seed upgrade types on UpgradeNFT
+  // -------------------------------------------------------------------------
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("  Seeding upgrade types...");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+  // Rarity: 0=Common, 1=Uncommon, 2=Rare, 3=Epic, 4=Legendary
+  // TODO: replace names/URIs with final game assets before mainnet
+  await (
+    await upgradeNFT.registerUpgradeType(
+      "Firewall Booster",
+      "https://assets.blockchaingods.io/upgrades/firewall_booster.json",
+      0, // Common
+      1n, // gameId = Node Defenders
+    )
+  ).wait();
+  console.log("  ✓ UpgradeNFT typeId 1: Firewall Booster (Common)\n");
+
+  await (
+    await upgradeNFT.registerUpgradeType(
+      "Node Shield",
+      "https://assets.blockchaingods.io/upgrades/node_shield.json",
+      1, // Uncommon
+      1n,
+    )
+  ).wait();
+  console.log("  ✓ UpgradeNFT typeId 2: Node Shield (Uncommon)\n");
+
+  // -------------------------------------------------------------------------
+  // Seed upgrade prices on Marketplace
+  // -------------------------------------------------------------------------
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("  Seeding upgrade prices...");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+  // TODO: adjust prices before mainnet based on economy model
+  await (
+    await marketplace.setUpgradePrice(
+      1n,
+      ethers.parseEther("50"), // 50 SOUL
+      ethers.parseEther("5"), // 5 GODS
+    )
+  ).wait();
+  console.log("  ✓ Marketplace typeId 1 listed: 50 SOUL / 5 GODS\n");
+
+  await (
+    await marketplace.setUpgradePrice(
+      2n,
+      ethers.parseEther("50"),
+      ethers.parseEther("5"),
+    )
+  ).wait();
+  console.log("  ✓ Marketplace typeId 2 listed: 50 SOUL / 5 GODS\n");
+
+  // -------------------------------------------------------------------------
+  // Seed SBT achievement types
+  // -------------------------------------------------------------------------
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("  Seeding SBT achievement types...");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+  // TODO: replace URIs with final metadata before mainnet
+  await (
+    await sbt.registerAchievementType(
+      "first_game",
+      "https://assets.blockchaingods.io/sbt/first_game.json",
+      1n, // gameId
+      1n, // modeId
+    )
+  ).wait();
+  console.log("  ✓ SBT typeId 1: first_game\n");
+
+  await (
+    await sbt.registerAchievementType(
+      "survive_10_rounds",
+      "https://assets.blockchaingods.io/sbt/survive_10_rounds.json",
+      1n,
+      1n,
+    )
+  ).wait();
+  console.log("  ✓ SBT typeId 2: survive_10_rounds\n");
+
+  await (
+    await sbt.registerAchievementType(
+      "kill_100_enemies",
+      "https://assets.blockchaingods.io/sbt/kill_100_enemies.json",
+      1n,
+      1n,
+    )
+  ).wait();
+  console.log("  ✓ SBT typeId 3: kill_100_enemies\n");
 
   // -------------------------------------------------------------------------
   // Save deployment addresses to file

@@ -32,7 +32,12 @@ interface IPlayerRegistry {
  *   user   = temporary renter, set by marketplace with an expiry timestamp
  *   userOf = returns zero address if rental has expired
  */
-contract UpgradeNFT is ERC721, ERC721URIStorage, AccessControl, ReentrancyGuard {
+contract UpgradeNFT is
+    ERC721,
+    ERC721URIStorage,
+    AccessControl,
+    ReentrancyGuard
+{
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant MARKETPLACE_ROLE = keccak256("MARKETPLACE_ROLE");
 
@@ -60,7 +65,13 @@ contract UpgradeNFT is ERC721, ERC721URIStorage, AccessControl, ReentrancyGuard 
     // Upgrade type registry
     // -------------------------------------------------------------------------
 
-    enum Rarity { Common, Uncommon, Rare, Epic, Legendary }
+    enum Rarity {
+        Common,
+        Uncommon,
+        Rare,
+        Epic,
+        Legendary
+    }
 
     struct UpgradeType {
         /// @notice Short identifier e.g. "damage_boost_rare"
@@ -92,12 +103,29 @@ contract UpgradeNFT is ERC721, ERC721URIStorage, AccessControl, ReentrancyGuard 
     // -------------------------------------------------------------------------
 
     /// @notice ERC-4907 required event
-    event UpdateUser(uint256 indexed tokenId, address indexed user, uint64 expires);
+    event UpdateUser(
+        uint256 indexed tokenId,
+        address indexed user,
+        uint64 expires
+    );
 
-    event UpgradeTypeRegistered(uint256 indexed typeId, string name, Rarity rarity, uint256 gameId);
+    event UpgradeTypeRegistered(
+        uint256 indexed typeId,
+        string name,
+        Rarity rarity,
+        uint256 gameId
+    );
     event UpgradeTypeDeactivated(uint256 indexed typeId);
-    event UpgradeMinted(address indexed to, uint256 indexed tokenId, uint256 indexed typeId);
-    event RentalAssigned(uint256 indexed tokenId, address indexed renter, uint64 expires);
+    event UpgradeMinted(
+        address indexed to,
+        uint256 indexed tokenId,
+        uint256 indexed typeId
+    );
+    event RentalAssigned(
+        uint256 indexed tokenId,
+        address indexed renter,
+        uint64 expires
+    );
     event RentalExpired(uint256 indexed tokenId);
 
     // -------------------------------------------------------------------------
@@ -172,8 +200,11 @@ contract UpgradeNFT is ERC721, ERC721URIStorage, AccessControl, ReentrancyGuard 
      * @notice Deactivate an upgrade type — stops future mints.
      *         Existing tokens are unaffected.
      */
-    function deactivateUpgradeType(uint256 typeId) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (typeId == 0 || typeId > totalUpgradeTypes) revert InvalidUpgradeType(typeId);
+    function deactivateUpgradeType(
+        uint256 typeId
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (typeId == 0 || typeId > totalUpgradeTypes)
+            revert InvalidUpgradeType(typeId);
         upgradeTypes[typeId].active = false;
         emit UpgradeTypeDeactivated(typeId);
     }
@@ -193,7 +224,8 @@ contract UpgradeNFT is ERC721, ERC721URIStorage, AccessControl, ReentrancyGuard 
         uint256 typeId
     ) external onlyRole(MINTER_ROLE) nonReentrant returns (uint256) {
         if (to == address(0)) revert ZeroAddress();
-        if (typeId == 0 || typeId > totalUpgradeTypes) revert InvalidUpgradeType(typeId);
+        if (typeId == 0 || typeId > totalUpgradeTypes)
+            revert InvalidUpgradeType(typeId);
         if (!upgradeTypes[typeId].active) revert InactiveUpgradeType(typeId);
         if (!playerRegistry.isActivePlayer(to)) revert NotRegisteredPlayer(to);
 
@@ -223,9 +255,11 @@ contract UpgradeNFT is ERC721, ERC721URIStorage, AccessControl, ReentrancyGuard 
         uint64 duration
     ) external onlyRole(MINTER_ROLE) nonReentrant returns (uint256) {
         if (owner == address(0) || renter == address(0)) revert ZeroAddress();
-        if (typeId == 0 || typeId > totalUpgradeTypes) revert InvalidUpgradeType(typeId);
+        if (typeId == 0 || typeId > totalUpgradeTypes)
+            revert InvalidUpgradeType(typeId);
         if (!upgradeTypes[typeId].active) revert InactiveUpgradeType(typeId);
-        if (!playerRegistry.isActivePlayer(renter)) revert NotRegisteredPlayer(renter);
+        if (!playerRegistry.isActivePlayer(renter))
+            revert NotRegisteredPlayer(renter);
         if (duration == 0) revert InvalidRentalDuration();
 
         uint256 tokenId = ++_nextTokenId;
@@ -235,7 +269,7 @@ contract UpgradeNFT is ERC721, ERC721URIStorage, AccessControl, ReentrancyGuard 
         _setTokenURI(tokenId, upgradeTypes[typeId].metadataURI);
 
         uint64 expires = uint64(block.timestamp) + duration;
-        _users[tokenId] = UserInfo({ user: renter, expires: expires });
+        _users[tokenId] = UserInfo({user: renter, expires: expires});
 
         emit UpgradeMinted(owner, tokenId, typeId);
         emit UpdateUser(tokenId, renter, expires);
@@ -263,7 +297,7 @@ contract UpgradeNFT is ERC721, ERC721URIStorage, AccessControl, ReentrancyGuard 
         if (_isRentalActive(tokenId)) revert RentalAlreadyActive(tokenId);
         if (expires <= block.timestamp) revert InvalidRentalDuration();
 
-        _users[tokenId] = UserInfo({ user: user, expires: expires });
+        _users[tokenId] = UserInfo({user: user, expires: expires});
         emit UpdateUser(tokenId, user, expires);
         emit RentalAssigned(tokenId, user, expires);
     }
@@ -292,7 +326,9 @@ contract UpgradeNFT is ERC721, ERC721URIStorage, AccessControl, ReentrancyGuard 
     // -------------------------------------------------------------------------
 
     /// @notice Get upgrade type details for a given token
-    function getTokenUpgrade(uint256 tokenId) external view returns (UpgradeType memory) {
+    function getTokenUpgrade(
+        uint256 tokenId
+    ) external view returns (UpgradeType memory) {
         return upgradeTypes[tokenUpgradeType[tokenId]];
     }
 
@@ -314,14 +350,19 @@ contract UpgradeNFT is ERC721, ERC721URIStorage, AccessControl, ReentrancyGuard 
     // Required overrides
     // -------------------------------------------------------------------------
 
-    function tokenURI(uint256 tokenId)
-        public view override(ERC721, ERC721URIStorage) returns (string memory)
-    {
+    function tokenURI(
+        uint256 tokenId
+    ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
         return super.tokenURI(tokenId);
     }
 
-    function supportsInterface(bytes4 interfaceId)
-        public view override(ERC721, ERC721URIStorage, AccessControl) returns (bool)
+    function supportsInterface(
+        bytes4 interfaceId
+    )
+        public
+        view
+        override(ERC721, ERC721URIStorage, AccessControl)
+        returns (bool)
     {
         if (interfaceId == _INTERFACE_ID_ERC4907) return true;
         return super.supportsInterface(interfaceId);
