@@ -49,7 +49,7 @@ async function main() {
       1n, // gameId = Node Defenders
     )
   ).wait();
-  console.log("✓ typeId 3: Basic Rounds (Common)");
+  console.log("✓ typeId 6: Basic Rounds (Common)");
 
   await (
     await upgradeNFT.registerUpgradeType(
@@ -59,7 +59,7 @@ async function main() {
       1n,
     )
   ).wait();
-  console.log("✓ typeId 4: Solar Lance (Common)");
+  console.log("✓ typeId 7: Solar Lance (Common)");
 
   await (
     await upgradeNFT.registerUpgradeType(
@@ -69,7 +69,7 @@ async function main() {
       1n,
     )
   ).wait();
-  console.log("✓ typeId 5: Arc Striker (Common)");
+  console.log("✓ typeId 8: Arc Striker (Common)");
 
   console.log("\nDone. Upgrade types registered on UpgradeNFT.");
 }
