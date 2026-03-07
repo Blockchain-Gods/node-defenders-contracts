@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 interface IUpgradeNFT {
     function mint(address to, uint256 typeId) external returns (uint256);
@@ -67,7 +68,7 @@ interface IPlayerRegistry {
  *   4. UpgradeNFT minted to escrow (this contract), renter set as ERC-4907 user
  *   5. On expiry, userOf returns zero address automatically — no cleanup needed
  */
-contract Marketplace is AccessControl, ReentrancyGuard {
+contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
     using SafeERC20 for IERC20;
 
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
@@ -204,6 +205,15 @@ contract Marketplace is AccessControl, ReentrancyGuard {
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(OPERATOR_ROLE, _signingService);
+    }
+
+    function onERC721Received(
+        address,
+        address,
+        uint256,
+        bytes calldata
+    ) external pure override returns (bytes4) {
+        return IERC721Receiver.onERC721Received.selector;
     }
 
     // -------------------------------------------------------------------------

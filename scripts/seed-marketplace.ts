@@ -26,7 +26,7 @@ async function main() {
     ethers.provider,
   );
 
-  const marketplaceAddress = "0x0ECA14745F29c2B3d1204e09f9cCFB0f17e3C77B";
+  const marketplaceAddress = "0x339A3071BDD8C973E89Fa7b43f7B5501fA259198";
   const Marketplace = await ethers.getContractFactory("Marketplace", deployer);
   const marketplace = Marketplace.attach(marketplaceAddress);
 
