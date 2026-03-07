@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 interface IUpgradeNFT {
     function mint(address to, uint256 typeId) external returns (uint256);
@@ -42,21 +41,19 @@ interface IPlayerRegistry {
  * @title Marketplace
  * @author BlockchainGods
  * @notice Buy and rent upgrade NFTs for Node Defenders using SOUL or GODS.
- *         Rentals are priced via fixed duration tiers (e.g. 1 day, 7 days, 30 days).
+ *         Buy price and rent price are set per upgrade type.
+ *         Rental tiers control duration only — not price.
  *         Uses EIP-2612 permit for gasless token approvals.
  *
  * Roles:
  *   DEFAULT_ADMIN_ROLE — deployer, can set prices, tiers, and delist
  *   OPERATOR_ROLE      — signing service, executes purchases on behalf of players
  *
- * Rental tiers:
- *   Admin registers tiers with a fixed duration and price.
- *   Players pick a tier when renting — no per-second math needed.
- *   UI can display tiers with estimated per-game cost for player clarity.
- *   Example tiers:
- *     Tier 1 — 1 day   — 10 SOUL
- *     Tier 2 — 7 days  — 35 SOUL
- *     Tier 3 — 30 days — 100 SOUL
+ * Pricing model:
+ *   Each upgrade type has its own buy price and flat rent price.
+ *   Rental tiers define available durations (1 day, 7 days, 30 days).
+ *   Rent cost = upgrade type rentPrice (flat, regardless of tier chosen).
+ *   Player picks a tier for duration — price comes from the upgrade type.
  *
  * Buy flow:
  *   1. Player permit sig authorises SOUL/GODS spend (EIP-2612, no separate tx)
@@ -66,11 +63,11 @@ interface IPlayerRegistry {
  * Rent flow:
  *   1. Player permit sig authorises SOUL/GODS spend (EIP-2612, no separate tx)
  *   2. Operator calls rentUpgrade with chosen tierId
- *   3. Payment transferred, fee routed to Treasury
+ *   3. Flat rent price transferred, fee routed to Treasury
  *   4. UpgradeNFT minted to escrow (this contract), renter set as ERC-4907 user
  *   5. On expiry, userOf returns zero address automatically — no cleanup needed
  */
-contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
+contract Marketplace is AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
@@ -83,7 +80,7 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
     IPlayerRegistry public immutable playerRegistry;
 
     // -------------------------------------------------------------------------
-    // Rental tiers
+    // Rental tiers — duration only
     // -------------------------------------------------------------------------
 
     struct RentalTier {
@@ -91,10 +88,6 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
         string label;
         /// @notice Duration in seconds
         uint64 duration;
-        /// @notice Flat price in SOUL (wei)
-        uint256 priceSoul;
-        /// @notice Flat price in GODS (wei) — 0 if not available in GODS
-        uint256 priceGods;
         /// @notice Whether this tier is active
         bool active;
     }
@@ -106,7 +99,7 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
     uint256 public totalRentalTiers;
 
     // -------------------------------------------------------------------------
-    // Upgrade pricing (buy only)
+    // Upgrade pricing — buy + rent price per type
     // -------------------------------------------------------------------------
 
     struct UpgradePrice {
@@ -114,6 +107,10 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
         uint256 buyPriceSoul;
         /// @notice One-time buy price in GODS (wei) — 0 if not available in GODS
         uint256 buyPriceGods;
+        /// @notice Flat rent price in SOUL (wei) — applied regardless of tier duration
+        uint256 rentPriceSoul;
+        /// @notice Flat rent price in GODS (wei) — 0 if not available in GODS
+        uint256 rentPriceGods;
         /// @notice Whether this upgrade type is listed
         bool listed;
     }
@@ -146,14 +143,15 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
     event RentalTierRegistered(
         uint256 indexed tierId,
         string label,
-        uint64 duration,
-        uint256 priceSoul
+        uint64 duration
     );
     event RentalTierDeactivated(uint256 indexed tierId);
     event UpgradePriceSet(
         uint256 indexed typeId,
         uint256 buyPriceSoul,
-        uint256 buyPriceGods
+        uint256 rentPriceSoul,
+        uint256 buyPriceGods,
+        uint256 rentPriceGods
     );
     event UpgradeDelisted(uint256 indexed typeId);
 
@@ -169,6 +167,7 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
     error InactiveTier(uint256 tierId);
     error UnsupportedPaymentToken(address token);
     error GodsPaymentNotAvailable();
+    error RentNotAvailable(uint256 typeId);
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -207,50 +206,34 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
         _grantRole(OPERATOR_ROLE, _signingService);
     }
 
-    function onERC721Received(
-        address,
-        address,
-        uint256,
-        bytes calldata
-    ) external pure returns (bytes4) {
-        return this.onERC721Received.selector;
-    }
-
     // -------------------------------------------------------------------------
-    // Tier management
+    // Tier management — duration only
     // -------------------------------------------------------------------------
 
     /**
      * @notice Register a new rental tier.
-     *         Call this after deployment to set up your initial tier options.
-     * @param label     Display label e.g. "1 Day", "7 Days", "30 Days"
-     * @param duration  Duration in seconds
-     * @param priceSoul Flat SOUL price for this tier (wei)
-     * @param priceGods Flat GODS price for this tier (wei) — 0 to disable
+     *         Tiers define available durations only — price comes from upgrade type.
+     * @param label    Display label e.g. "1 Day", "7 Days", "30 Days"
+     * @param duration Duration in seconds
      */
     function registerRentalTier(
         string calldata label,
-        uint64 duration,
-        uint256 priceSoul,
-        uint256 priceGods
+        uint64 duration
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (duration == 0) revert ZeroAmount();
-        if (priceSoul == 0) revert ZeroAmount();
 
         uint256 tierId = ++totalRentalTiers;
 
         rentalTiers[tierId] = RentalTier({
             label: label,
             duration: duration,
-            priceSoul: priceSoul,
-            priceGods: priceGods,
             active: true
         });
 
-        emit RentalTierRegistered(tierId, label, duration, priceSoul);
+        emit RentalTierRegistered(tierId, label, duration);
     }
 
-    /// @notice Deactivate a rental tier — stops future rentals at this tier
+    /// @notice Deactivate a rental tier
     function deactivateRentalTier(
         uint256 tierId
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -265,25 +248,39 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Set buy price for an upgrade type.
-     * @param typeId       Upgrade type ID from UpgradeNFT
-     * @param buyPriceSoul Buy price in SOUL (wei)
-     * @param buyPriceGods Buy price in GODS (wei) — 0 to disable GODS payment
+     * @notice Set buy and rent prices for an upgrade type.
+     *         Call this when registering a new upgrade type in UpgradeNFT.
+     *         Can be called again anytime to update prices — overwrites existing.
+     * @param typeId        Upgrade type ID from UpgradeNFT
+     * @param buyPriceSoul  Buy price in SOUL (wei)
+     * @param rentPriceSoul Flat rent price in SOUL (wei) — set 0 to disable renting
+     * @param buyPriceGods  Buy price in GODS (wei) — set 0 to disable GODS payment
+     * @param rentPriceGods Flat rent price in GODS (wei) — set 0 to disable GODS rent
      */
     function setUpgradePrice(
         uint256 typeId,
         uint256 buyPriceSoul,
-        uint256 buyPriceGods
+        uint256 rentPriceSoul,
+        uint256 buyPriceGods,
+        uint256 rentPriceGods
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (buyPriceSoul == 0) revert ZeroAmount();
 
         prices[typeId] = UpgradePrice({
             buyPriceSoul: buyPriceSoul,
             buyPriceGods: buyPriceGods,
+            rentPriceSoul: rentPriceSoul,
+            rentPriceGods: rentPriceGods,
             listed: true
         });
 
-        emit UpgradePriceSet(typeId, buyPriceSoul, buyPriceGods);
+        emit UpgradePriceSet(
+            typeId,
+            buyPriceSoul,
+            rentPriceSoul,
+            buyPriceGods,
+            rentPriceGods
+        );
     }
 
     /// @notice Delist an upgrade type from the marketplace
@@ -300,7 +297,6 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
 
     /**
      * @notice Purchase permanent ownership of an upgrade NFT.
-     *         Called by signing service after player provides EIP-2612 permit sig.
      * @param buyer        Custodial wallet of the buyer
      * @param typeId       Upgrade type to purchase
      * @param paymentToken SOUL or GODS token address
@@ -323,8 +319,7 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
         uint256 fee = treasury.computeFee(totalPrice);
 
         token.safeTransferFrom(buyer, address(this), totalPrice);
-        token.approve(address(treasury), fee);
-        treasury.receiveFee(address(token), address(this), fee);
+        token.safeTransfer(address(treasury), fee);
 
         tokenId = upgradeNFT.mint(buyer, typeId);
 
@@ -343,14 +338,11 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Rent an upgrade NFT for a fixed duration tier.
-     *         Called by signing service after player provides EIP-2612 permit sig.
-     *         Player picks a tierId — duration and price are resolved from the tier.
-     *         NFT minted to this contract (escrow), renter set as ERC-4907 user.
-     *
+     * @notice Rent an upgrade NFT for a chosen duration tier.
+     *         Price is flat per upgrade type — tier determines duration only.
      * @param renter       Custodial wallet of the renter
      * @param typeId       Upgrade type to rent
-     * @param tierId       Rental tier (1 = 1 day, 2 = 7 days, 3 = 30 days etc.)
+     * @param tierId       Duration tier (1 = 1 day, 2 = 7 days, 3 = 30 days)
      * @param paymentToken SOUL or GODS token address
      */
     function rentUpgrade(
@@ -362,23 +354,23 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
         if (renter == address(0)) revert ZeroAddress();
         if (!playerRegistry.isActivePlayer(renter))
             revert NotRegisteredPlayer(renter);
-        if (!prices[typeId].listed) revert UpgradeNotListed(typeId);
         if (tierId == 0 || tierId > totalRentalTiers)
             revert InvalidTier(tierId);
 
         RentalTier memory tier = rentalTiers[tierId];
         if (!tier.active) revert InactiveTier(tierId);
 
+        UpgradePrice memory price = _assertListed(typeId);
         (IERC20 token, uint256 totalPrice) = _resolveRentPrice(
-            tier,
-            paymentToken
+            price,
+            paymentToken,
+            typeId
         );
 
         uint256 fee = treasury.computeFee(totalPrice);
 
         token.safeTransferFrom(renter, address(this), totalPrice);
-        token.approve(address(treasury), fee);
-        treasury.receiveFee(address(token), address(this), fee);
+        token.safeTransfer(address(treasury), fee);
 
         tokenId = upgradeNFT.mintAndRent(
             address(this),
@@ -405,13 +397,12 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
     // Views
     // -------------------------------------------------------------------------
 
-    /// @notice Get all active rental tiers — call this from your UI to populate tier options
+    /// @notice Get all active rental tiers — call from UI to populate duration options
     function getActiveTiers() external view returns (RentalTier[] memory) {
         uint256 activeCount = 0;
         for (uint256 i = 1; i <= totalRentalTiers; i++) {
             if (rentalTiers[i].active) activeCount++;
         }
-
         RentalTier[] memory active = new RentalTier[](activeCount);
         uint256 idx = 0;
         for (uint256 i = 1; i <= totalRentalTiers; i++) {
@@ -420,7 +411,7 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
         return active;
     }
 
-    /// @notice Compute buy cost including fee for display in UI
+    /// @notice Compute buy cost including fee for a given type and token
     function computeBuyCost(
         uint256 typeId,
         address paymentToken
@@ -430,13 +421,14 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
         fee = treasury.computeFee(total);
     }
 
-    /// @notice Compute rent cost including fee for a given tier and token
+    /// @notice Compute rent cost including fee for a given type and token
+    ///         Price is flat per upgrade type — tier does not affect price
     function computeRentCost(
-        uint256 tierId,
+        uint256 typeId,
         address paymentToken
     ) external view returns (uint256 total, uint256 fee) {
-        RentalTier memory tier = rentalTiers[tierId];
-        (, total) = _resolveRentPrice(tier, paymentToken);
+        UpgradePrice memory price = prices[typeId];
+        (, total) = _resolveRentPrice(price, paymentToken, typeId);
         fee = treasury.computeFee(total);
     }
 
@@ -471,14 +463,16 @@ contract Marketplace is AccessControl, ReentrancyGuard, IERC721Receiver {
     }
 
     function _resolveRentPrice(
-        RentalTier memory tier,
-        address paymentToken
+        UpgradePrice memory price,
+        address paymentToken,
+        uint256 typeId
     ) internal view returns (IERC20 token, uint256 totalPrice) {
         _assertSupportedToken(paymentToken);
         if (paymentToken == address(godsToken)) {
-            if (tier.priceGods == 0) revert GodsPaymentNotAvailable();
-            return (godsToken, tier.priceGods);
+            if (price.rentPriceGods == 0) revert GodsPaymentNotAvailable();
+            return (godsToken, price.rentPriceGods);
         }
-        return (soulToken, tier.priceSoul);
+        if (price.rentPriceSoul == 0) revert RentNotAvailable(typeId);
+        return (soulToken, price.rentPriceSoul);
     }
 }

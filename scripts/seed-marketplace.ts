@@ -31,20 +31,43 @@ async function main() {
   const marketplace = Marketplace.attach(marketplaceAddress);
 
   // Prices in SOUL (18 decimals)
-  const buyPriceSoul = ethers.parseEther("50"); // 50 SOUL to buy
-  const buyPriceGods = ethers.parseEther("5"); // 5 GODS to buy
+  const buyPriceSoul = ethers.parseEther("3000");
+  const buyPriceGods = ethers.parseEther("300");
 
   console.log("Listing upgrade typeId 1...");
   await (
-    await marketplace.setUpgradePrice(1n, buyPriceSoul, buyPriceGods)
+    await marketplace.setUpgradePrice(
+      1n,
+      ethers.parseEther("100"), // buyPriceSoul
+      ethers.parseEther("20"), // rentPriceSoul (20% of buy)
+      ethers.parseEther("1"), // buyPriceSoul
+      ethers.parseEther("0.2"), // rentPriceGods (20% of buy)
+    )
   ).wait();
-  console.log("✓ typeId 1 listed: 50 SOUL / 5 GODS");
+  console.log("✓ typeId 1 listed");
 
   console.log("Listing upgrade typeId 2...");
   await (
-    await marketplace.setUpgradePrice(2n, buyPriceSoul, buyPriceGods)
+    await marketplace.setUpgradePrice(
+      2n,
+      ethers.parseEther("2000"), // buyPriceSoul
+      ethers.parseEther("400"), // rentPriceSoul (20% of buy)
+      ethers.parseEther("200"), // buyPriceSoul
+      ethers.parseEther("40"), // rentPriceGods (20% of buy)
+    )
   ).wait();
-  console.log("✓ typeId 2 listed: 50 SOUL / 5 GODS");
+  console.log("✓ typeId 2 listed");
+
+  await (
+    await marketplace.setUpgradePrice(
+      3n,
+      ethers.parseEther("3000"), // buyPriceSoul
+      ethers.parseEther("600"), // rentPriceSoul (20% of buy)
+      ethers.parseEther("300"), // buyPriceSoul
+      ethers.parseEther("60"), // rentPriceGods (20% of buy)
+    )
+  ).wait();
+  console.log("✓ typeId 3 listed");
 
   console.log("\nDone. Upgrade types listed on Marketplace.");
 }

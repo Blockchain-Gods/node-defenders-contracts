@@ -177,7 +177,7 @@ async function main() {
   console.log("  ✓ Done\n");
 
   // -------------------------------------------------------------------------
-  // Seed initial rental tiers
+  // Seed initial rental tiers — duration only, no price
   // -------------------------------------------------------------------------
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("  Seeding rental tiers...");
@@ -187,26 +187,14 @@ async function main() {
   const sevenDays = 604800n;
   const thirtyDays = 2592000n;
 
-  // Prices in SOUL — 18 decimals
-  // TODO: adjust these before Fuji / mainnet based on your economy model
-  const tier1Price = ethers.parseEther("10"); // 10 SOUL / 1 day
-  const tier2Price = ethers.parseEther("35"); // 35 SOUL / 7 days
-  const tier3Price = ethers.parseEther("100"); // 100 SOUL / 30 days
+  console.log("  Tier 1 — 1 Day");
+  await (await marketplace.registerRentalTier("1 Day", oneDay)).wait();
 
-  console.log("  Tier 1 — 1 Day   — 10 SOUL");
-  await (
-    await marketplace.registerRentalTier("1 Day", oneDay, tier1Price, 0n)
-  ).wait();
+  console.log("  Tier 2 — 7 Days");
+  await (await marketplace.registerRentalTier("7 Days", sevenDays)).wait();
 
-  console.log("  Tier 2 — 7 Days  — 35 SOUL");
-  await (
-    await marketplace.registerRentalTier("7 Days", sevenDays, tier2Price, 0n)
-  ).wait();
-
-  console.log("  Tier 3 — 30 Days — 100 SOUL");
-  await (
-    await marketplace.registerRentalTier("30 Days", thirtyDays, tier3Price, 0n)
-  ).wait();
+  console.log("  Tier 3 — 30 Days");
+  await (await marketplace.registerRentalTier("30 Days", thirtyDays)).wait();
   console.log("  ✓ Tiers seeded\n");
 
   // -------------------------------------------------------------------------
@@ -239,30 +227,47 @@ async function main() {
   console.log("  ✓ UpgradeNFT typeId 2: Node Shield (Uncommon)\n");
 
   // -------------------------------------------------------------------------
-  // Seed upgrade prices on Marketplace
+  // Seed upgrade prices — buy + rent per type
+  // rentPriceSoul = ~20% of buyPriceSoul (flat, any duration tier)
+  // TODO: adjust before mainnet
   // -------------------------------------------------------------------------
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("  Seeding upgrade prices...");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
-  // TODO: adjust prices before mainnet based on economy model
   await (
     await marketplace.setUpgradePrice(
       1n,
-      ethers.parseEther("50"), // 50 SOUL
-      ethers.parseEther("5"), // 5 GODS
+      ethers.parseEther("100"), // buyPriceSoul
+      ethers.parseEther("20"), // rentPriceSoul (20% of buy)
+      ethers.parseEther("1"), // buyPriceSoul
+      ethers.parseEther("0.2"), // rentPriceGods (20% of buy)
     )
   ).wait();
-  console.log("  ✓ Marketplace typeId 1 listed: 50 SOUL / 5 GODS\n");
+  console.log("✓ typeId 1 listed");
 
+  console.log("Listing upgrade typeId 2...");
   await (
     await marketplace.setUpgradePrice(
       2n,
-      ethers.parseEther("50"),
-      ethers.parseEther("5"),
+      ethers.parseEther("2000"), // buyPriceSoul
+      ethers.parseEther("400"), // rentPriceSoul (20% of buy)
+      ethers.parseEther("200"), // buyPriceSoul
+      ethers.parseEther("40"), // rentPriceGods (20% of buy)
     )
   ).wait();
-  console.log("  ✓ Marketplace typeId 2 listed: 50 SOUL / 5 GODS\n");
+  console.log("✓ typeId 2 listed");
+
+  await (
+    await marketplace.setUpgradePrice(
+      3n,
+      ethers.parseEther("3000"), // buyPriceSoul
+      ethers.parseEther("600"), // rentPriceSoul (20% of buy)
+      ethers.parseEther("300"), // buyPriceSoul
+      ethers.parseEther("60"), // rentPriceGods (20% of buy)
+    )
+  ).wait();
+  console.log("✓ typeId 3 listed");
 
   // -------------------------------------------------------------------------
   // Seed SBT achievement types

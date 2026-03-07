@@ -43,23 +43,33 @@ async function main() {
 
   await (
     await upgradeNFT.registerUpgradeType(
-      "Firewall Booster",
-      "https://assets.yourdomain.com/upgrades/firewall_booster.json",
+      "Basic Rounds",
+      "https://cdn.blockchaingods.io/upgrades/basic-rounds.json",
       Rarity.Common,
       1n, // gameId = Node Defenders
     )
   ).wait();
-  console.log("✓ typeId 1: Firewall Booster (Common)");
+  console.log("✓ typeId 3: Basic Rounds (Common)");
 
   await (
     await upgradeNFT.registerUpgradeType(
-      "Node Shield",
-      "https://assets.yourdomain.com/upgrades/node_shield.json",
-      Rarity.Uncommon,
+      "Solar Lance",
+      "https://cdn.blockchaingods.io/upgrades/solar-lance.json",
+      Rarity.Common,
       1n,
     )
   ).wait();
-  console.log("✓ typeId 2: Node Shield (Uncommon)");
+  console.log("✓ typeId 4: Solar Lance (Common)");
+
+  await (
+    await upgradeNFT.registerUpgradeType(
+      "Arc Striker",
+      "https://cdn.blockchaingods.io/upgrades/arc-striker.json",
+      Rarity.Common,
+      1n,
+    )
+  ).wait();
+  console.log("✓ typeId 5: Arc Striker (Common)");
 
   console.log("\nDone. Upgrade types registered on UpgradeNFT.");
 }
